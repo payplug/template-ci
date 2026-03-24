@@ -1,0 +1,56 @@
+name: PHP — Test PHP 7.2
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: 'PHP version to test against'
+        type: string
+        default: '7.2'
+      artifact-name:
+        description: 'Name of the artifact to download'
+        type: string
+        default: 'php72-artifact'
+      test-namespace:
+        description: 'PSR-4 namespace prefix for the tests/ autoload (e.g. "Vendor\\MyLib\\tests\\")'
+        type: string
+        required: true
+
+jobs:
+  test:
+    name: Unit Tests on PHP ${{ inputs.php-version }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download downgraded artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: payplug-core/
+
+      - name: Set up PHP ${{ inputs.php-version }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Inject phpunit ^8 and test autoload into composer.json
+        working-directory: payplug-core
+        env:
+          TEST_NAMESPACE: ${{ inputs.test-namespace }}
+        run: |
+          php -r '
+            $c = json_decode(file_get_contents("composer.json"), true);
+            $c["require-dev"] = ["phpunit/phpunit" => "^8.5"];
+            $c["autoload-dev"] = ["psr-4" => [getenv("TEST_NAMESPACE") => "tests/"]];
+            file_put_contents("composer.json", json_encode($c, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)."\n");
+          '
+
+      - name: Install dependencies
+        working-directory: payplug-core
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run unit tests
+        working-directory: payplug-core
+        run: vendor/bin/phpunit tests/

@@ -1,0 +1,36 @@
+name: PHP — Validate
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: 'PHP version to validate against'
+        type: string
+        default: '7.2'
+      artifact-name:
+        description: 'Name of the artifact to download'
+        type: string
+        default: 'php72-artifact'
+
+jobs:
+  validate:
+    name: Validate on PHP ${{ inputs.php-version }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download downgraded artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: payplug-core/
+
+      - name: Set up PHP ${{ inputs.php-version }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Install production dependencies
+        working-directory: payplug-core
+        run: composer install --no-interaction --prefer-dist --no-dev

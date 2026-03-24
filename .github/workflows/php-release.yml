@@ -1,0 +1,63 @@
+name: PHP — Release
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: 'PHP version to build with'
+        type: string
+        default: '8.4'
+      zip-prefix:
+        description: 'Prefix for the ZIP filename (e.g. "my-lib-php72")'
+        type: string
+        required: true
+
+jobs:
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag targets main
+        run: |
+          git fetch origin main --depth=1
+          git merge-base --is-ancestor ${{ github.sha }} origin/main \
+            || { echo "::error::This tag does not point to a commit on main."; exit 1; }
+
+      - name: Set up PHP ${{ inputs.php-version }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-scripts
+
+      - name: Run release (Rector downgrade + generate composer.json)
+        run: composer release
+
+      - name: Strip tests/ from release artifact
+        run: rm -rf payplug-core/tests
+
+      - name: Create ZIP
+        run: |
+          ZIP_NAME="${{ inputs.zip-prefix }}-${GITHUB_REF_NAME}.zip"
+          zip -r "$ZIP_NAME" payplug-core/
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "${{ env.ZIP_NAME }}" \
+            --title "Release $GITHUB_REF_NAME" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

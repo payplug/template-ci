@@ -1,0 +1,46 @@
+name: PHP — Downgrade
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: 'PHP version to build with'
+        type: string
+        default: '8.4'
+      artifact-name:
+        description: 'Name of the artifact to upload'
+        type: string
+        default: 'php72-artifact'
+      artifact-retention-days:
+        description: 'Artifact retention in days'
+        type: number
+        default: 7
+
+jobs:
+  downgrade:
+    name: Downgrade to PHP 7.2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP ${{ inputs.php-version }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-scripts
+
+      - name: Run release (Rector downgrade + generate composer.json)
+        run: composer release
+
+      - name: Upload downgraded artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: payplug-core/
+          retention-days: ${{ inputs.artifact-retention-days }}
