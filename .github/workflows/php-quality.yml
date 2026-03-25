@@ -31,4 +31,7 @@ jobs:
         run: composer stan
 
       - name: PHP-CS-Fixer (dry-run)
-        run: composer lint
+        run: composer cs-lint
+
+      - name: PHP-Unit
+        run: composer test

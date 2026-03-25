@@ -33,4 +33,4 @@ jobs:
 
       - name: Install production dependencies
         working-directory: payplug-core
-        run: composer install --no-interaction --prefer-dist --no-dev
+        run: composer install --no-interaction --prefer-dist

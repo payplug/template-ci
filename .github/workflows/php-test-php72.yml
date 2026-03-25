@@ -12,9 +12,9 @@ on:
         type: string
         default: 'php72-artifact'
       test-namespace:
-        description: 'PSR-4 namespace prefix for the tests/ autoload (e.g. "Vendor\\MyLib\\tests\\")'
+        description: 'PSR-4 namespace prefix for the tests autoload'
         type: string
-        required: true
+        default: ''
 
 jobs:
   test:
@@ -35,21 +35,25 @@ jobs:
           tools: composer:v2
           coverage: none
 
-      - name: Inject phpunit ^8 and test autoload into composer.json
-        working-directory: payplug-core
-        env:
-          TEST_NAMESPACE: ${{ inputs.test-namespace }}
-        run: |
-          php -r '
-            $c = json_decode(file_get_contents("composer.json"), true);
-            $c["require-dev"] = ["phpunit/phpunit" => "^8.5"];
-            $c["autoload-dev"] = ["psr-4" => [getenv("TEST_NAMESPACE") => "tests/"]];
-            file_put_contents("composer.json", json_encode($c, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)."\n");
-          '
+#      - name: Inject phpunit ^8 and test autoload into composer.json
+#        working-directory: payplug-core
+#        env:
+#          TEST_NAMESPACE: ${{ inputs.test-namespace }}
+#        run: |
+#          php -r '
+#            $c = json_decode(file_get_contents("composer.json"), true);
+#            $c["require-dev"] = ["phpunit/phpunit" => "^8.5"];
+#            $c["autoload-dev"] = ["psr-4" => [getenv("TEST_NAMESPACE") => "tests/"]];
+#            file_put_contents("composer.json", json_encode($c, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)."\n");
+#          '
 
       - name: Install dependencies
         working-directory: payplug-core
         run: composer install --no-interaction --prefer-dist
+
+      - name: Checking payplug-core structure
+        working-directory: payplug-core
+        run: ls -la
 
       - name: Run unit tests
         working-directory: payplug-core
