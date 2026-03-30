@@ -1,0 +1,80 @@
+name: PHP — Push Dist Branch
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: 'Name of the artifact to download (produced by php-downgrade.yml)'
+        type: string
+        required: true
+      source-branch:
+        description: 'Source branch name (e.g. feature/PRE-123 or develop). Determines the dist branch: dist/{php-target}/{source-branch}'
+        type: string
+        required: true
+      php-target:
+        description: 'PHP target label used in the dist branch prefix (e.g. php72)'
+        type: string
+        default: 'php72'
+
+jobs:
+  push-dist:
+    name: Push → dist/${{ inputs.php-target }}/${{ inputs.source-branch }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # Download the transpiled artifact to /tmp so it survives the checkout step
+      - name: Download transpiled artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: /tmp/dist-content
+
+      # Checkout gives us git context + configures GITHUB_TOKEN credentials for git push
+      - name: Checkout source repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create or update dist branch
+        env:
+          DIST_BRANCH: dist/${{ inputs.php-target }}/${{ inputs.source-branch }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          echo "📦 Target dist branch: $DIST_BRANCH"
+
+          # Switch to the dist branch, preserving its history if it already exists.
+          # If this is the first push for this branch, create a clean orphan
+          # (no shared history with the source branch — dist branches are generated code).
+          if git ls-remote --exit-code --heads origin "$DIST_BRANCH" > /dev/null 2>&1; then
+            git fetch origin "$DIST_BRANCH"
+            git checkout -B "$DIST_BRANCH" "origin/$DIST_BRANCH"
+            echo "🔄 Branch exists — updating."
+          else
+            git checkout --orphan "$DIST_BRANCH"
+            echo "🆕 First push — creating orphan branch."
+          fi
+
+          # Wipe all content (the dist branch should only ever contain transpiled code)
+          git rm -rf . --quiet 2>/dev/null || true
+          find . -mindepth 1 -maxdepth 1 -not -name '.git' -exec rm -rf {} +
+
+          # Populate with the freshly transpiled artifact
+          cp -r /tmp/dist-content/. .
+
+          # Only commit and push if something actually changed
+          git add -A
+          if git diff --cached --quiet; then
+            echo "✅ No changes — dist branch is already up to date."
+          else
+            git commit -m "chore: transpile to ${{ inputs.php-target }} from ${SOURCE_SHA::8}"
+            git push origin "$DIST_BRANCH" --force
+            echo "✅ Pushed to $DIST_BRANCH"
+          fi
