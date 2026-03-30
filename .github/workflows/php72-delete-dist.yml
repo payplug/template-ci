@@ -1,0 +1,34 @@
+name: PHP — Delete Dist Branch
+
+on:
+  workflow_call:
+    inputs:
+      source-branch:
+        description: 'Source branch that was merged (e.g. feature/PRE-123). The dist branch dist/{php-target}/{source-branch} will be deleted.'
+        type: string
+        required: true
+      php-target:
+        description: 'PHP target label used in the dist branch prefix (e.g. php72)'
+        type: string
+        default: 'php72'
+
+jobs:
+  delete-dist:
+    name: Delete dist/${{ inputs.php-target }}/${{ inputs.source-branch }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Delete dist branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIST_BRANCH: dist/${{ inputs.php-target }}/${{ inputs.source-branch }}
+        run: |
+          echo "🗑️ Deleting dist branch: $DIST_BRANCH"
+
+          if gh api --method DELETE "/repos/${GITHUB_REPOSITORY}/git/refs/heads/${DIST_BRANCH}" 2>/dev/null; then
+            echo "✅ Deleted $DIST_BRANCH"
+          else
+            echo "ℹ️ Branch $DIST_BRANCH does not exist — nothing to delete."
+          fi
