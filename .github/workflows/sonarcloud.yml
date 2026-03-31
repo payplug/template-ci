@@ -1,0 +1,31 @@
+name: Sonarcloud Scan
+on:
+  workflow_call:
+    inputs:
+      project-name:
+        description: 'project name to use in SonarCloud'
+        type: string
+        default: ''
+
+jobs:
+  sonarcloud:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # Disabling shallow clone is recommended for improving relevancy of reporting
+          fetch-depth: 0
+      - name: SonarCloud Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: .
+          args: >
+            -Dsonar.organization=${{ secrets.SONAR_ORGA }}
+            -Dsonar.projectKey=${{ inputs.project-name }}
+            -Dsonar.sources=lib/
+            -Dsonar.test.exclusions=tests/**
+            -Dsonar.tests=tests/
+            -Dsonar.verbose=true
