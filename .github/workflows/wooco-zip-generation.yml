@@ -1,0 +1,139 @@
+name: WooCommerce — QA Zip Generation
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: 'PHP version to use for Composer'
+        type: string
+        default: '7.2'
+      node-version:
+        description: 'Node.js version to use for asset compilation'
+        type: string
+        default: '20'
+    secrets:
+      payplug-domain-qa:
+        description: 'Value injected into PAYPLUG_DOMAIN in assets/js/payplug-domain.js'
+        required: true
+      cdn-payplug-qa:
+        description: 'Value injected into IP_API in payplug-config.php'
+        required: true
+
+jobs:
+  build-qa-zip:
+    name: Build QA zip
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── PHP ────────────────────────────────────────────────────────────────
+      - name: Set up PHP ${{ inputs.php-version }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Install Composer dependencies (no dev, optimised autoloader)
+        run: composer install --prefer-dist --no-dev --no-scripts -o
+
+      # ── Node / assets ──────────────────────────────────────────────────────
+      - name: Set up Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Generate UI assets from payplug-ui-plugins-bo
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          rm -rf ./assets/dist
+          mkdir -p ./assets/dist/js ./assets/dist/css ./assets/dist/img
+          cp ./node_modules/payplug-ui-plugins-bo/js/app.js           ./assets/dist/js/app-${VERSION}.js
+          cp ./node_modules/payplug-ui-plugins-bo/js/chunk-vendors.js ./assets/dist/js/chunk-vendors-${VERSION}.js
+          cp ./node_modules/payplug-ui-plugins-bo/css/app.css         ./assets/dist/css/app-${VERSION}.css
+          cp ./node_modules/payplug-ui-plugins-bo/img/*               ./assets/dist/img/
+
+      - name: Compile SCSS assets
+        run: npm run build:css
+
+      # ── QA environment injection ───────────────────────────────────────────
+      # All three changes are intentionally NOT committed — they only exist in
+      # the zip artifact so that secrets never land in the repository.
+
+      - name: Inject QA values
+        env:
+          PAYPLUG_DOMAIN_QA: ${{ secrets.payplug-domain-qa }}
+          CDN_PAYPLUG_QA: ${{ secrets.cdn-payplug-qa }}
+        run: |
+          python3 << 'PYEOF'
+          import os, re
+
+          domain_qa = os.environ['PAYPLUG_DOMAIN_QA']
+          cdn_qa    = os.environ['CDN_PAYPLUG_QA']
+
+          # assets/js/payplug-domain.js — set PAYPLUG_DOMAIN constant
+          with open('assets/js/payplug-domain.js', 'r') as f:
+              content = f.read()
+          content = re.sub(
+              r'const PAYPLUG_DOMAIN = "[^"]*"',
+              f'const PAYPLUG_DOMAIN = "{domain_qa}"',
+              content
+          )
+          with open('assets/js/payplug-domain.js', 'w') as f:
+              f.write(content)
+
+          # payplug-config.php — set IP_API constant
+          with open('payplug-config.php', 'r') as f:
+              content = f.read()
+          content = re.sub(
+              r"define\('IP_API',\s*'[^']*'\)",
+              f"define('IP_API', '{cdn_qa}')",
+              content
+          )
+          with open('payplug-config.php', 'w') as f:
+              f.write(content)
+          PYEOF
+
+      - name: Switch Payplug PHP lib to QA API endpoint
+        run: |
+          sed -i 's/api\.payplug\.com/api-qa.payplug.com/g' \
+            vendor/payplug/payplug-php/lib/Payplug/Core/APIRoutes.php
+
+      # ── Zip ────────────────────────────────────────────────────────────────
+      - name: Extract plugin version
+        id: meta
+        run: |
+          VERSION=$(grep -oP "define\('PAYPLUG_GATEWAY_VERSION',\s*'\K[^']+" payplug.php)
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "zip_name=payplug-woocommerce-${VERSION}-qa.zip" >> $GITHUB_OUTPUT
+
+      - name: Build QA zip
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          PLUGIN_DIR=$(basename "$PWD")
+          cd ..
+
+          # Read .distignore and convert each entry to a zip --exclude flag.
+          # vendor is explicitly kept: it is required at runtime.
+          EXCLUDES=()
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
+            [[ "$line" == "vendor" ]] && continue
+            EXCLUDES+=("--exclude=${PLUGIN_DIR}/${line}")
+          done < "${PLUGIN_DIR}/.distignore"
+          # Exclude SCSS sources — compiled CSS is already included
+          EXCLUDES+=("--exclude=${PLUGIN_DIR}/assets/scss*")
+
+          zip -r "${PLUGIN_DIR}/${{ steps.meta.outputs.zip_name }}" "$PLUGIN_DIR" "${EXCLUDES[@]}"
+
+      - name: Upload QA zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.zip_name }}
+          path: ${{ steps.meta.outputs.zip_name }}
+          retention-days: 7
