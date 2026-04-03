@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # ── PHP ────────────────────────────────────────────────────────────────
       - name: Set up PHP ${{ inputs.php-version }}
@@ -104,36 +104,42 @@ jobs:
           sed -i 's/api\.payplug\.com/api-qa.payplug.com/g' \
             vendor/payplug/payplug-php/lib/Payplug/Core/APIRoutes.php
 
-      # ── Zip ────────────────────────────────────────────────────────────────
+      # ── Artifact ───────────────────────────────────────────────────────────
+      # We stage the plugin files into a directory instead of creating a zip.
+      # actions/upload-artifact wraps whatever it receives in a zip — so uploading
+      # a pre-made zip would give a zip-of-a-zip. Uploading a directory gives a
+      # single zip with the right payplug-woocommerce/ structure, directly
+      # installable via the WordPress admin "Upload Plugin" screen.
+
       - name: Extract plugin version
         id: meta
         run: |
           VERSION=$(grep -oP "define\('PAYPLUG_GATEWAY_VERSION',\s*'\K[^']+" payplug.php)
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "zip_name=payplug-woocommerce-${VERSION}-qa.zip" >> $GITHUB_OUTPUT
 
-      - name: Build QA zip
+      - name: Stage plugin files
         run: |
-          VERSION="${{ steps.meta.outputs.version }}"
-          PLUGIN_DIR=$(basename "$PWD")
-          cd ..
+          STAGING="/tmp/qa-staging/payplug-woocommerce"
+          mkdir -p "$STAGING"
 
-          # Read .distignore and convert each entry to a zip --exclude flag.
+          # Build rsync exclude list from .distignore.
           # vendor is explicitly kept: it is required at runtime.
           EXCLUDES=()
           while IFS= read -r line || [[ -n "$line" ]]; do
             [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
             [[ "$line" == "vendor" ]] && continue
-            EXCLUDES+=("--exclude=${PLUGIN_DIR}/${line}")
-          done < "${PLUGIN_DIR}/.distignore"
+            EXCLUDES+=("--exclude=${line}")
+          done < .distignore
           # Exclude SCSS sources — compiled CSS is already included
-          EXCLUDES+=("--exclude=${PLUGIN_DIR}/assets/scss*")
+          EXCLUDES+=("--exclude=assets/scss*")
 
-          zip -r "${PLUGIN_DIR}/${{ steps.meta.outputs.zip_name }}" "$PLUGIN_DIR" "${EXCLUDES[@]}"
+          rsync -a "${EXCLUDES[@]}" . "$STAGING/"
 
-      - name: Upload QA zip artifact
+      - name: Upload QA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.meta.outputs.zip_name }}
-          path: ${{ steps.meta.outputs.zip_name }}
+          # Artifact name carries the version; the downloaded zip is ready to
+          # install directly from the WordPress admin "Upload Plugin" screen.
+          name: payplug-woocommerce-${{ steps.meta.outputs.version }}-qa
+          path: /tmp/qa-staging/
           retention-days: 7
