@@ -1,0 +1,45 @@
+name: PHP — Compatibility Check
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: 'PHP version used to run the compatibility check tooling'
+        type: string
+        default: '7.2'
+      test-version-range:
+        description: 'PHPCompatibility testVersion range (e.g. "5.6-8.1")'
+        type: string
+        default: '5.6-8.1'
+      src-folder:
+        description: 'Source folder to scan'
+        type: string
+        default: './src/'
+
+jobs:
+  check-php-compatibility:
+    name: PHP Compatibility (${{ inputs.test-version-range }})
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up PHP ${{ inputs.php-version }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --ignore-platform-reqs
+
+      - name: Install PHPCompatibility coding standard
+        run: vendor/bin/phpcs --config-set installed_paths vendor/phpcompatibility/php-compatibility
+
+      - name: Check PHP compatibility ${{ inputs.test-version-range }}
+        run: |
+          vendor/bin/phpcs --colors -s ${{ inputs.src-folder }} \
+            --standard=PHPCompatibility \
+            --runtime-set testVersion ${{ inputs.test-version-range }}

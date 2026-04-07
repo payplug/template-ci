@@ -1,0 +1,65 @@
+name: WooCommerce — Apply release.json
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Branch ref to check out and push the versioned files back to'
+        type: string
+        required: true
+    secrets:
+      github-token:
+        description: 'Token with write access to the repository (used for checkout and push)'
+        required: true
+
+jobs:
+  apply-release:
+    name: Apply release.json
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.github-token }}
+
+      - name: Apply release.json
+        run: |
+          php << 'EOF'
+          <?php
+          $release    = json_decode(file_get_contents('release.json'));
+          $version    = $release->version;
+          $wcVersion  = $release->wc_tested_up_to;
+          $wpVersion  = $release->wp_tested_up_to;
+          $changelog  = $release->changelog;
+
+          $plugin = file_get_contents('payplug.php');
+          $plugin = preg_replace('/(\* Version:\s+)[\d.]+/',         '${1}' . $version,   $plugin);
+          $plugin = preg_replace('/(\* WC tested up to:\s+)[\d.]+/', '${1}' . $wcVersion, $plugin);
+          $plugin = preg_replace("/(define\('PAYPLUG_GATEWAY_VERSION',\s*')[^']+'/", '${1}' . $version . "'", $plugin);
+          file_put_contents('payplug.php', $plugin);
+
+          $readme = file_get_contents('readme.txt');
+          $readme = preg_replace('/^Stable tag:.*$/m',   'Stable tag: '   . $version,   $readme);
+          $readme = preg_replace('/^Tested up to:.*$/m', 'Tested up to: ' . $wpVersion, $readme);
+          $entry  = "== Changelog ==\n= $version =\n$changelog\n\n";
+          $readme = preg_replace('/== Changelog ==/', $entry, $readme, 1);
+          file_put_contents('readme.txt', $readme);
+
+          foreach (['composer.json', 'package.json'] as $jsonFile) {
+            $data = json_decode(file_get_contents($jsonFile));
+            $data->version = $version;
+            file_put_contents($jsonFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+          }
+          EOF
+
+      - name: Commit updated files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add payplug.php readme.txt composer.json package.json
+          VERSION=$(php -r "echo json_decode(file_get_contents('release.json'))->version;")
+          git diff --staged --quiet || (git commit -m "PROCESS: apply release.json versions [$VERSION]" && git push)
