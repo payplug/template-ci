@@ -1,4 +1,4 @@
-name: WooCommerce — QA Zip Generation
+name: WooCommerce — Zip Generation
 
 on:
   workflow_call:
@@ -11,22 +11,35 @@ on:
         description: 'Node.js version to use for asset compilation'
         type: string
         default: '20'
+      ref:
+        description: 'Branch ref or SHA to check out (defaults to the triggering commit)'
+        type: string
+        default: ''
+      env:
+        description: 'Target environment (QA or prod)'
+        type: string
+        default: 'QA'
     secrets:
-      payplug-domain-qa:
-        description: 'Value injected into PAYPLUG_DOMAIN in assets/js/payplug-domain.js'
-        required: true
-      cdn-payplug-qa:
+      payplug-domain:
+        description: 'Value injected into PAYPLUG_DOMAIN in assets/js/payplug-domain.js (QA only; omit for prod)'
+        required: false
+      cdn-payplug:
         description: 'Value injected into IP_API in payplug-config.php'
+        required: true
+      api-payplug:
+        description: 'API domain injected into vendor/payplug/payplug-php/lib/Payplug/Core/APIRoutes.php'
         required: true
 
 jobs:
-  build-qa-zip:
-    name: Build QA zip
+  build-zip:
+    name: Build ${{ inputs.env }} zip
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
 
       # ── PHP ────────────────────────────────────────────────────────────────
       - name: Set up PHP ${{ inputs.php-version }}
@@ -61,29 +74,38 @@ jobs:
       - name: Compile SCSS assets
         run: npm run build:css
 
-      # ── QA environment injection ───────────────────────────────────────────
-      # All three changes are intentionally NOT committed — they only exist in
+      # ── Environment injection ──────────────────────────────────────────────
+      # All changes are intentionally NOT committed — they only exist in
       # the zip artifact so that secrets never land in the repository.
 
-      - name: Inject QA values
+      - name: Inject environment values
         env:
-          PAYPLUG_DOMAIN_QA: ${{ secrets.payplug-domain-qa }}
-          CDN_PAYPLUG_QA: ${{ secrets.cdn-payplug-qa }}
+          TARGET_ENV:     ${{ inputs.env }}
+          PAYPLUG_DOMAIN: ${{ secrets.payplug-domain }}
+          CDN_PAYPLUG:    ${{ secrets.cdn-payplug }}
+          API_PAYPLUG:    ${{ secrets.api-payplug }}
         run: |
           python3 << 'PYEOF'
           import os, re
 
-          domain_qa = os.environ['PAYPLUG_DOMAIN_QA']
-          cdn_qa    = os.environ['CDN_PAYPLUG_QA']
+          target_env     = os.environ['TARGET_ENV']
+          payplug_domain = os.environ['PAYPLUG_DOMAIN']
+          cdn_payplug    = os.environ['CDN_PAYPLUG']
+          api_payplug    = os.environ['API_PAYPLUG']
 
-          # assets/js/payplug-domain.js — set PAYPLUG_DOMAIN constant
+          # assets/js/payplug-domain.js
+          # QA:   replace PAYPLUG_DOMAIN value with the secret
+          # prod: delete the line entirely
           with open('assets/js/payplug-domain.js', 'r') as f:
               content = f.read()
-          content = re.sub(
-              r'const PAYPLUG_DOMAIN = "[^"]*"',
-              f'const PAYPLUG_DOMAIN = "{domain_qa}"',
-              content
-          )
+          if target_env == 'QA':
+              content = re.sub(
+                  r'const PAYPLUG_DOMAIN = "[^"]*"',
+                  f'const PAYPLUG_DOMAIN = "{payplug_domain}"',
+                  content
+              )
+          else:
+              content = re.sub(r'[^\n]*const PAYPLUG_DOMAIN = "[^"]*"[^\n]*\n?', '', content)
           with open('assets/js/payplug-domain.js', 'w') as f:
               f.write(content)
 
@@ -92,17 +114,20 @@ jobs:
               content = f.read()
           content = re.sub(
               r"define\('IP_API',\s*'[^']*'\)",
-              f"define('IP_API', '{cdn_qa}')",
+              f"define('IP_API', '{cdn_payplug}')",
               content
           )
           with open('payplug-config.php', 'w') as f:
               f.write(content)
-          PYEOF
 
-      - name: Switch Payplug PHP lib to QA API endpoint
-        run: |
-          sed -i 's/api\.payplug\.com/api-qa.payplug.com/g' \
-            vendor/payplug/payplug-php/lib/Payplug/Core/APIRoutes.php
+          # vendor/payplug/payplug-php/lib/Payplug/Core/APIRoutes.php — set API domain
+          routes_path = 'vendor/payplug/payplug-php/lib/Payplug/Core/APIRoutes.php'
+          with open(routes_path, 'r') as f:
+              content = f.read()
+          content = content.replace('api.payplug.com', api_payplug)
+          with open(routes_path, 'w') as f:
+              f.write(content)
+          PYEOF
 
       # ── Artifact ───────────────────────────────────────────────────────────
       # We stage the plugin files into a directory instead of creating a zip.
@@ -119,7 +144,7 @@ jobs:
 
       - name: Stage plugin files
         run: |
-          STAGING="/tmp/qa-staging/payplug-woocommerce"
+          STAGING="/tmp/staging/payplug-woocommerce"
           mkdir -p "$STAGING"
 
           # Build rsync exclude list from .distignore.
@@ -135,11 +160,9 @@ jobs:
 
           rsync -a "${EXCLUDES[@]}" . "$STAGING/"
 
-      - name: Upload QA artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          # Artifact name carries the version; the downloaded zip is ready to
-          # install directly from the WordPress admin "Upload Plugin" screen.
-          name: payplug-woocommerce-${{ steps.meta.outputs.version }}-qa
-          path: /tmp/qa-staging/
+          name: payplug-woocommerce-${{ steps.meta.outputs.version }}-${{ inputs.env }}
+          path: /tmp/staging/
           retention-days: 7

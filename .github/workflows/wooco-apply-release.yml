@@ -45,14 +45,16 @@ jobs:
           $readme = file_get_contents('readme.txt');
           $readme = preg_replace('/^Stable tag:.*$/m',   'Stable tag: '   . $version,   $readme);
           $readme = preg_replace('/^Tested up to:.*$/m', 'Tested up to: ' . $wpVersion, $readme);
-          $entry  = "== Changelog ==\n= $version =\n$changelog\n\n";
+          $entry  = "== Changelog ==\n= $version =\n$changelog\n";
           $readme = preg_replace('/== Changelog ==/', $entry, $readme, 1);
           file_put_contents('readme.txt', $readme);
 
           foreach (['composer.json', 'package.json'] as $jsonFile) {
             $data = json_decode(file_get_contents($jsonFile));
             $data->version = $version;
-            file_put_contents($jsonFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+            $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            $json = preg_replace_callback('/^( +)/m', function($m) { return str_repeat(' ', (int)(strlen($m[1]) / 2)); }, $json);
+            file_put_contents($jsonFile, $json . "\n");
           }
           EOF
 
