@@ -29,6 +29,9 @@ on:
       api-payplug:
         description: 'API domain injected into vendor/payplug/payplug-php/lib/Payplug/Core/APIRoutes.php'
         required: true
+      api-payplug-retail:
+        description: 'Retail API domain injected into vendor/payplug/payplug-php/lib/Payplug/Core/APIRoutes.php'
+        required: true
 
 jobs:
   build-zip:
@@ -84,6 +87,7 @@ jobs:
           PAYPLUG_DOMAIN: ${{ secrets.payplug-domain }}
           CDN_PAYPLUG:    ${{ secrets.cdn-payplug }}
           API_PAYPLUG:    ${{ secrets.api-payplug }}
+          API_PAYPLUG_RETAIL:    ${{ secrets.api-payplug-retail }}
         run: |
           python3 << 'PYEOF'
           import os, re
@@ -92,6 +96,7 @@ jobs:
           payplug_domain = os.environ['PAYPLUG_DOMAIN']
           cdn_payplug    = os.environ['CDN_PAYPLUG']
           api_payplug    = os.environ['API_PAYPLUG']
+          api_payplug_retail    = os.environ['API_PAYPLUG_RETAIL']
 
           # assets/js/payplug-domain.js
           # QA:   replace PAYPLUG_DOMAIN value with the secret
@@ -124,7 +129,8 @@ jobs:
           routes_path = 'vendor/payplug/payplug-php/lib/Payplug/Core/APIRoutes.php'
           with open(routes_path, 'r') as f:
               content = f.read()
-          content = content.replace('api.payplug.com', api_payplug)
+          content = content.replace('https://api.payplug.com', api_payplug)
+          content = content.replace('https://retail.service.payplug.com', api_payplug_retail)
           with open(routes_path, 'w') as f:
               f.write(content)
           PYEOF
