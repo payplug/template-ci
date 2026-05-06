@@ -1,0 +1,71 @@
+name: Sylius — Quality
+
+on:
+    workflow_call:
+        inputs:
+            php-version:
+                description: 'PHP version to run quality checks on'
+                type: string
+                default: '8.2'
+            symfony-version:
+                description: 'Symfony version constraint'
+                type: string
+                default: '6.4'
+
+jobs:
+    quality:
+        name: PHP Quality
+        runs-on: ubuntu-latest
+        env:
+            APP_ENV: test
+        steps:
+            -
+                uses: actions/checkout@v4
+                with:
+                    fetch-depth: 0
+            -
+                name: 'Setup PHP ${{ inputs.php-version }}'
+                uses: shivammathur/setup-php@v2
+                with:
+                    php-version: '${{ inputs.php-version }}'
+                    ini-values: date.timezone=UTC
+                    extensions: intl
+                    tools: symfony
+                    coverage: none
+            -
+                name: 'Composer - Get Cache Directory'
+                id: composer-cache
+                run: 'echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT'
+            -
+                name: 'Composer - Set cache'
+                uses: actions/cache@v4
+                with:
+                    path: '${{ steps.composer-cache.outputs.dir }}'
+                    key: 'php-${{ inputs.php-version }}-symfony-${{ inputs.symfony-version }}-composer-${{ hashFiles(''**/composer.json'') }}'
+                    restore-keys: 'php-${{ inputs.php-version }}-symfony-${{ inputs.symfony-version }}-composer-'
+            -
+                name: 'Composer - Github Auth'
+                run: 'composer config -g github-oauth.github.com ${{ github.token }}'
+            -
+                name: 'Composer - Remove version field for validation'
+                run: |
+                    jq 'del(.version)' composer.json > composer.json.tmp
+                    mv composer.json.tmp composer.json
+            -
+                name: 'Composer - Validate'
+                run: 'composer validate --strict'
+            -
+                name: 'Composer - Restrict Symfony version'
+                run: 'composer config extra.symfony.require "^${{ inputs.symfony-version }}"'
+            -
+                name: 'Composer - Install dependencies'
+                run: 'composer install --no-progress'
+                id: end-of-setup
+            -
+                name: 'ECS - Coding Standard'
+                run: 'composer ecs'
+                if: 'always() && steps.end-of-setup.outcome == ''success'''
+            -
+                name: 'PHPStan - Static Analysis'
+                run: 'composer phpstan'
+                if: 'always() && steps.end-of-setup.outcome == ''success'''

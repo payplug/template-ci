@@ -1,0 +1,20 @@
+name: Sylius — Auto-tag RC0
+
+on:
+    workflow_call:
+
+jobs:
+    create-rc0-tag:
+        name: Create RC0 tag
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            -
+                uses: actions/checkout@v4
+            -
+                name: Create and push RC0 tag
+                run: |
+                    VERSION="${GITHUB_REF#refs/heads/release/}"
+                    git tag "${VERSION}-rc0"
+                    git push origin "${VERSION}-rc0"

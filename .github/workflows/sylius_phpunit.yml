@@ -1,0 +1,106 @@
+name: Sylius — PHPUnit Matrix
+
+on:
+    workflow_call:
+        inputs:
+            php-versions:
+                description: 'PHP versions to test as a JSON array (e.g. ["8.2","8.4"])'
+                type: string
+                default: '["8.2","8.4"]'
+            sylius-versions:
+                description: 'Sylius versions to test as a JSON array (e.g. ["2.1.0","2.0.0"])'
+                type: string
+                default: '["2.1.0","2.0.0"]'
+            symfony-versions:
+                description: 'Symfony versions to test as a JSON array (e.g. ["6.4","7.3"])'
+                type: string
+                default: '["6.4","7.3"]'
+            node-version:
+                description: 'Node.js version'
+                type: string
+                default: '20.x'
+
+jobs:
+    phpunit:
+        name: 'PHPUnit (PHP ${{ matrix.php }} Sylius ${{ matrix.sylius }} Symfony ${{ matrix.symfony }})'
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                php: ${{ fromJson(inputs.php-versions) }}
+                sylius: ${{ fromJson(inputs.sylius-versions) }}
+                symfony: ${{ fromJson(inputs.symfony-versions) }}
+        env:
+            APP_ENV: test
+        steps:
+            -
+                name: 'Setup PHP ${{ matrix.php }}'
+                uses: shivammathur/setup-php@v2
+                with:
+                    php-version: '${{ matrix.php }}'
+                    ini-values: date.timezone=UTC
+                    extensions: intl
+                    tools: symfony
+                    coverage: none
+            -
+                name: 'Setup Node ${{ inputs.node-version }}'
+                uses: actions/setup-node@v4
+                with:
+                    node-version: '${{ inputs.node-version }}'
+            -
+                uses: actions/checkout@v4
+            -
+                name: 'Composer - Get Cache Directory'
+                id: composer-cache
+                run: 'echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT'
+            -
+                name: 'Composer - Set cache'
+                uses: actions/cache@v4
+                id: cache-composer
+                with:
+                    path: '${{ steps.composer-cache.outputs.dir }}'
+                    key: 'php-${{ matrix.php }}-sylius-${{ matrix.sylius }}-symfony-${{ matrix.symfony }}-composer-${{ hashFiles(''**/composer.json'') }}'
+                    restore-keys: 'php-${{ matrix.php }}-sylius-${{ matrix.sylius }}-symfony-${{ matrix.symfony }}-composer-'
+            -
+                name: 'Composer - Create cache directory'
+                run: 'mkdir -p /home/runner/.composer/cache'
+                if: 'steps.cache-composer.outputs.cache-hit != ''true'''
+            -
+                name: 'Composer - Github Auth'
+                run: 'composer config -g github-oauth.github.com ${{ github.token }}'
+            -
+                name: 'Yarn - Get cache directory'
+                id: yarn-cache
+                run: 'echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT'
+            -
+                name: 'Yarn - Set Cache'
+                uses: actions/cache@v4
+                with:
+                    path: '${{ steps.yarn-cache.outputs.dir }}'
+                    key: 'node-${{ inputs.node-version }}-yarn-${{ hashFiles(''**/package.json **/yarn.lock'') }}'
+                    restore-keys: "node-${{ inputs.node-version }}-yarn-\n"
+            -
+                name: 'Install Sylius-Standard and Plugin'
+                run: 'make install -e SYLIUS_VERSION=${{ matrix.sylius }} SYMFONY_VERSION=${{ matrix.symfony }}'
+                id: end-of-setup-sylius
+            -
+                name: 'Doctrine Schema Validate'
+                run: 'vendor/bin/console doctrine:schema:validate --skip-sync'
+            -
+                name: 'Run PHPUnit'
+                run: 'make phpunit'
+                if: 'always() && steps.end-of-setup-sylius.outcome == ''success'''
+            -
+                uses: actions/upload-artifact@v4
+                if: failure()
+                with:
+                    name: 'logs-php${{ matrix.php }}-sylius${{ matrix.sylius }}-sf${{ matrix.symfony }}'
+                    path: ./tests/TestApplication/etc/build
+        services:
+            mariadb:
+                image: 'mariadb:10.4.11'
+                ports:
+                    - '3306:3306'
+                env:
+                    MYSQL_ALLOW_EMPTY_PASSWORD: true
+                options: '--health-cmd="mysqladmin ping" --health-interval=5s --health-timeout=2s --health-retries=3'
