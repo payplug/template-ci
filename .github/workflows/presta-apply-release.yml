@@ -1,0 +1,77 @@
+name: PrestaShop — Apply release.json
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Branch ref to check out and push the versioned files back to'
+        type: string
+        required: true
+    secrets:
+      github-token:
+        description: 'Token with write access to the repository (used for checkout and push)'
+        required: true
+
+jobs:
+  apply-release:
+    name: Apply release.json
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.github-token }}
+
+      - name: Apply release.json
+        run: |
+          php << 'EOF'
+          <?php
+          $release   = json_decode(file_get_contents('release.json'));
+          $version   = $release->version;
+          $changelog = $release->changelog ?? '';
+
+          // payplug.php — update $this->version
+          $plugin = file_get_contents('payplug.php');
+          $plugin = preg_replace(
+              "/(\\\$this->version\s*=\s*')[^']+'/",
+              '${1}' . $version . "'",
+              $plugin
+          );
+          file_put_contents('payplug.php', $plugin);
+
+          // composer.json, package.json — update version field
+          foreach (['composer.json', 'package.json'] as $jsonFile) {
+              $data = json_decode(file_get_contents($jsonFile));
+              $data->version = $version;
+              $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+              $json = preg_replace_callback('/^( +)/m', function ($m) {
+                  return str_repeat(' ', (int) (strlen($m[1]) / 2));
+              }, $json);
+              file_put_contents($jsonFile, $json . "\n");
+          }
+
+          // package-lock.json — update top-level version + packages[""].version
+          $lock = json_decode(file_get_contents('package-lock.json'));
+          $lock->version = $version;
+          if (isset($lock->packages) && isset($lock->packages->{''})) {
+              $lock->packages->{''} ->version = $version;
+          }
+          $json = json_encode($lock, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+          $json = preg_replace_callback('/^( +)/m', function ($m) {
+              return str_repeat(' ', (int) (strlen($m[1]) / 2));
+          }, $json);
+          file_put_contents('package-lock.json', $json . "\n");
+          EOF
+
+      - name: Commit updated files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add payplug.php composer.json package.json package-lock.json
+          VERSION=$(php -r "echo json_decode(file_get_contents('release.json'))->version;")
+          git diff --staged --quiet || (git commit -m "PROCESS: apply release.json versions [$VERSION]" && git push)
+
