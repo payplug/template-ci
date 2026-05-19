@@ -30,6 +30,9 @@ on:
       api-payplug-retail:
         description: 'Retail API domain injected into vendor/payplug/payplug-php/lib/Payplug/Core/APIRoutes.php'
         required: true
+      github-token:
+        description: 'Token used to attach the zip to a GitHub Release (required for prod only)'
+        required: false
 
 jobs:
   build-zip:
@@ -139,4 +142,9 @@ jobs:
           name: payplug_${{ steps.meta.outputs.version }}-${{ inputs.env }}
           path: /tmp/staging/
           retention-days: 7
+      - name: Attach zip to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: gh release upload ${{ github.ref_name }} payplug.zip --clobber --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.github-token }}
 
