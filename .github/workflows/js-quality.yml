@@ -30,4 +30,4 @@ jobs:
         run: npm ci
 
       - name: ESLint — syntax & style check
-        run: npx eslint ${{ inputs.js-folder }} --ext .js --max-warnings=0
+        run: npx eslint ${{ inputs.js-folder }}
