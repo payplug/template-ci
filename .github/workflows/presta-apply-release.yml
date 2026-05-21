@@ -1,4 +1,4 @@
-name: PrestaShop — Apply release.json
+name: PrestaShop — Apply release changes
 
 on:
   workflow_call:
@@ -14,7 +14,7 @@ on:
 
 jobs:
   apply-release:
-    name: Apply release.json
+    name: Apply release version
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -26,13 +26,22 @@ jobs:
           ref: ${{ inputs.ref }}
           token: ${{ secrets.github-token }}
 
-      - name: Apply release.json
+      - name: Apply version from branch name
+        env:
+          INPUT_REF: ${{ inputs.ref }}
         run: |
           php << 'EOF'
           <?php
-          $release   = json_decode(file_get_contents('release.json'));
-          $version   = $release->version;
-          $changelog = $release->changelog ?? '';
+          // Extract version from branch name: release/4.24.0 → 4.24.0
+          $ref     = getenv('INPUT_REF');
+          $version = preg_replace('#^release/#', '', $ref);
+
+          if (!preg_match('/^\d+\.\d+\.\d+/', $version)) {
+              echo "ERROR: Could not extract version from ref: $ref\n";
+              exit(1);
+          }
+
+          echo "Applying version: $version (from branch: $ref)\n";
 
           // payplug.php — update $this->version
           $plugin = file_get_contents('payplug.php');
@@ -72,6 +81,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add payplug.php composer.json package.json package-lock.json
-          VERSION=$(php -r "echo json_decode(file_get_contents('release.json'))->version;")
-          git diff --staged --quiet || (git commit -m "PROCESS: apply release.json versions [$VERSION]" && git push)
-
+          VERSION=$(echo "${{ inputs.ref }}" | sed 's|release/||')
+          git diff --staged --quiet || (git commit -m "PROCESS: apply release version [$VERSION]" && git push)
