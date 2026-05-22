@@ -115,8 +115,15 @@ jobs:
           echo "Creating the package zip file"
           php dev/ci/list_module_files.php .
 
-          echo "Remove unnecessary files"
-          rm -rf node_modules dev tests
+          echo "Remove unnecessary files using .distignore"
+          while IFS= read -r line || [ -n "$line" ]; do
+            # skip blank lines and comments
+            [[ -z "$line" || "$line" == \#* ]] && continue
+            rm -rf "$line"
+          done < .distignore
+
+          echo "Remove .distignore itself"
+          rm -f .distignore
 
       # ── Artifact ───────────────────────────────────────────────────────────
       # We stage the plugin files into a payplug/ directory.
