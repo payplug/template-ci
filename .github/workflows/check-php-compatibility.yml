@@ -15,6 +15,10 @@ on:
         description: 'Source folder to scan'
         type: string
         default: './src/'
+      ignore-patterns:
+        description: 'Comma-separated list of file/folder patterns to exclude from the scan'
+        type: string
+        default: ''
 
 jobs:
   check-php-compatibility:
@@ -39,7 +43,14 @@ jobs:
         run: vendor/bin/phpcs --config-set installed_paths vendor/phpcompatibility/php-compatibility
 
       - name: Check PHP compatibility ${{ inputs.test-version-range }}
+        env:
+          IGNORE_PATTERNS: ${{ inputs.ignore-patterns }}
         run: |
+          IGNORE_FLAG=""
+          if [ -n "$IGNORE_PATTERNS" ]; then
+            IGNORE_FLAG="--ignore=$IGNORE_PATTERNS"
+          fi
           vendor/bin/phpcs --colors -s ${{ inputs.src-folder }} \
             --standard=PHPCompatibility \
-            --runtime-set testVersion ${{ inputs.test-version-range }}
+            --runtime-set testVersion ${{ inputs.test-version-range }} \
+            $IGNORE_FLAG
