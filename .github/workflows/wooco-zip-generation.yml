@@ -19,6 +19,10 @@ on:
         description: 'Target environment (QA or prod)'
         type: string
         default: 'QA'
+      upload-to-release:
+        description: 'Whether to create a zip and attach it to an existing GitHub Release'
+        type: boolean
+        default: false
     secrets:
       payplug-domain:
         description: 'Value injected into PAYPLUG_DOMAIN in assets/js/payplug-domain.js (QA only; omit for prod)'
@@ -32,6 +36,9 @@ on:
       api-payplug-retail:
         description: 'Retail API domain injected into vendor/payplug/payplug-php/lib/Payplug/Core/APIRoutes.php'
         required: true
+      github-token:
+        description: 'Token used to attach the zip to a GitHub Release (required when triggered by a release event)'
+        required: false
 
 jobs:
   build-zip:
@@ -172,3 +179,15 @@ jobs:
           name: payplug-woocommerce-${{ steps.meta.outputs.version }}-${{ inputs.env }}
           path: /tmp/staging/
           retention-days: 7
+
+      - name: Create zip for release
+        if: inputs.upload-to-release
+        run: |
+          cd /tmp/staging
+          zip -r payplug-woocommerce.zip payplug-woocommerce/
+
+      - name: Attach zip to GitHub Release
+        if: inputs.upload-to-release
+        run: gh release upload ${{ github.ref_name }} /tmp/staging/payplug-woocommerce.zip --clobber --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.github-token }}
