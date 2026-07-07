@@ -184,10 +184,13 @@ jobs:
         if: inputs.upload-to-release
         run: |
           cd /tmp/staging
-          zip -r payplug-woocommerce.zip payplug-woocommerce/
+          zip -r payplug.zip payplug-woocommerce/
 
       - name: Attach zip to GitHub Release
         if: inputs.upload-to-release
-        run: gh release upload ${{ github.ref_name }} /tmp/staging/payplug-woocommerce.zip --clobber --repo ${{ github.repository }}
+        run: |
+          TAG="${{ inputs.ref }}"
+          TAG="${TAG#refs/tags/}"
+          gh release upload "$TAG" /tmp/staging/payplug.zip --clobber --repo ${{ github.repository }}
         env:
           GH_TOKEN: ${{ secrets.github-token }}
