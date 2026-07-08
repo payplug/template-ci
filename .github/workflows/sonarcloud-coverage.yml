@@ -1,0 +1,63 @@
+name: Sonarcloud Scan (with coverage)
+on:
+  workflow_call:
+    inputs:
+      project-name:
+        description: 'project name to use in SonarCloud'
+        type: string
+        default: ''
+      src-folder:
+        description: 'Project source folder'
+        type: string
+        default: 'src/'
+      coverage-report-artifact:
+        description: 'Name of a workflow artifact (uploaded by the caller) containing a Clover XML coverage report named clover.xml'
+        type: string
+        required: true
+      enforce-quality-gate:
+        description: 'Fail the job when the SonarCloud Quality Gate does not pass'
+        type: boolean
+        default: false
+    secrets:
+      sonar-token:
+        required: true
+      sonar-orga:
+        required: true
+
+jobs:
+  sonarcloud:
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ !inputs.enforce-quality-gate }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Disabling shallow clone is recommended for improving relevancy of reporting
+          fetch-depth: 0
+
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.coverage-report-artifact }}
+          path: .sonar-coverage
+
+      - name: SonarCloud Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.sonar-token }}
+        with:
+          projectBaseDir: .
+          args: >
+            -Dsonar.organization=${{ secrets.sonar-orga }}
+            -Dsonar.projectKey=${{ inputs.project-name }}
+            -Dsonar.sources=${{ inputs.src-folder }}
+            -Dsonar.test.exclusions=tests/**
+            -Dsonar.tests=tests/
+            -Dsonar.php.coverage.reportPaths=.sonar-coverage/clover.xml
+            -Dsonar.verbose=true
+
+      - name: Quality Gate check
+        if: inputs.enforce-quality-gate
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.sonar-token }}
