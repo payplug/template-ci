@@ -25,8 +25,8 @@ on:
         default: false
     secrets:
       payplug-domain:
-        description: 'Value injected into PAYPLUG_DOMAIN in assets/js/payplug-domain.js (QA only; omit for prod)'
-        required: false
+        description: 'Value injected into PAYPLUG_DOMAIN in assets/js/payplug-domain.js and payplug-config.php'
+        required: true
       cdn-payplug:
         description: 'Value injected into IP_API in payplug-config.php'
         required: true
@@ -119,6 +119,17 @@ jobs:
           else:
               content = re.sub(r'[^\n]*const PAYPLUG_DOMAIN = "[^"]*"[^\n]*\n?', '', content)
           with open('assets/js/payplug-domain.js', 'w') as f:
+              f.write(content)
+          
+          # payplug-config.php — set SECURE_DOMAIN constant
+          with open('payplug-config.php', 'r') as f:
+              content = f.read()
+          content = re.sub(
+              r"define\('SECURE_DOMAIN',\s*'[^']*'\)",
+              f"define('SECURE_DOMAIN', '{payplug_domain}')",
+              content
+          )
+          with open('payplug-config.php', 'w') as f:
               f.write(content)
 
           # payplug-config.php — set IP_API constant
