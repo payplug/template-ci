@@ -39,6 +39,10 @@ on:
       github-token:
         description: 'Token used to attach the zip to a GitHub Release (required when triggered by a release event)'
         required: false
+      oney-loader-url:
+        description: 'Oney widget loader URL injected into payplug-config.php'
+        required: true
+
 
 jobs:
   build-zip:
@@ -95,12 +99,14 @@ jobs:
           CDN_PAYPLUG:    ${{ secrets.cdn-payplug }}
           API_PAYPLUG:    ${{ secrets.api-payplug }}
           API_PAYPLUG_RETAIL:    ${{ secrets.api-payplug-retail }}
+          ONEY_LOADER_URL: ${{ secrets.oney-loader-url }}
         run: |
           python3 << 'PYEOF'
           import os, re
 
           target_env     = os.environ['TARGET_ENV']
           payplug_domain = os.environ['PAYPLUG_DOMAIN']
+          oney_loader = os.environ['ONEY_LOADER_URL']
           cdn_payplug    = os.environ['CDN_PAYPLUG']
           api_payplug    = os.environ['API_PAYPLUG']
           api_payplug_retail    = os.environ['API_PAYPLUG_RETAIL']
@@ -127,6 +133,17 @@ jobs:
           content = re.sub(
               r"define\('SECURE_DOMAIN',\s*'[^']*'\)",
               f"define('SECURE_DOMAIN', '{payplug_domain}')",
+              content
+          )
+          with open('payplug-config.php', 'w') as f:
+              f.write(content)
+          
+          # payplug-config.php — set ONEY_LOADER_URL constant
+          with open('payplug-config.php', 'r') as f:
+              content = f.read()
+          content = re.sub(
+              r"define\('ONEY_LOADER_URL',\s*'[^']*'\)",
+              f"define('ONEY_LOADER_URL', '{oney_loader}')",
               content
           )
           with open('payplug-config.php', 'w') as f:
