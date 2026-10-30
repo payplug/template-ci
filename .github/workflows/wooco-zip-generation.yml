@@ -42,6 +42,15 @@ on:
       oney-loader-url:
         description: 'Oney widget loader URL injected into payplug-config.php'
         required: true
+      hosted-fields-sdk:
+        description: 'JS sdk url to load Hosted Fields'
+        required: true
+      upc-oauth-base-url:
+        description: 'Oauth base url used by UPC with Unify API'
+        required: true
+      upc-api-base-url:
+        description: 'Unify API payment base url'
+        required: true
 
 
 jobs:
@@ -100,6 +109,9 @@ jobs:
           API_PAYPLUG:    ${{ secrets.api-payplug }}
           API_PAYPLUG_RETAIL:    ${{ secrets.api-payplug-retail }}
           ONEY_LOADER_URL: ${{ secrets.oney-loader-url }}
+          HOSTED_FIELDS_SDK_URL: ${{ secrets.hosted-fields-sdk }}
+          UPC_OAUTH_BASE_URL: ${{ secrets.upc-oauth-base-url }}
+          UPC_UNIFIED_API_BASE_URL: ${{ secrets.upc-api-base-url }}
         run: |
           python3 << 'PYEOF'
           import os, re
@@ -110,6 +122,9 @@ jobs:
           cdn_payplug    = os.environ['CDN_PAYPLUG']
           api_payplug    = os.environ['API_PAYPLUG']
           api_payplug_retail    = os.environ['API_PAYPLUG_RETAIL']
+          upc_oauth_base_url    = os.environ['UPC_OAUTH_BASE_URL']
+          hosted_fields_sdk    = os.environ['HOSTED_FIELDS_SDK_URL']
+          upc_api_base_url   = os.environ['UPC_UNIFIED_API_BASE_URL']
 
           # assets/js/payplug-domain.js
           # QA:   replace PAYPLUG_DOMAIN value with the secret
@@ -155,6 +170,39 @@ jobs:
           content = re.sub(
               r"define\('IP_API',\s*'[^']*'\)",
               f"define('IP_API', '{cdn_payplug}')",
+              content
+          )
+          with open('payplug-config.php', 'w') as f:
+              f.write(content)
+          
+          # payplug-config.php — set HOSTED_FIELDS_SDK_URL constant
+          with open('payplug-config.php', 'r') as f:
+              content = f.read()
+          content = re.sub(
+              r"define\('HOSTED_FIELDS_SDK_URL',\s*'[^']*'\)",
+              f"define('HOSTED_FIELDS_SDK_URL', '{hosted_fields_sdk}')",
+              content
+          )
+          with open('payplug-config.php', 'w') as f:
+              f.write(content)
+          
+          # payplug-config.php — set UPC_OAUTH_BASE_URL constant
+          with open('payplug-config.php', 'r') as f:
+              content = f.read()
+          content = re.sub(
+              r"define\('UPC_OAUTH_BASE_URL',\s*'[^']*'\)",
+              f"define('UPC_OAUTH_BASE_URL', '{upc_oauth_base_url}')",
+              content
+          )
+          with open('payplug-config.php', 'w') as f:
+              f.write(content)
+          
+          # payplug-config.php — set UPC_UNIFIED_API_BASE_URL constant
+          with open('payplug-config.php', 'r') as f:
+              content = f.read()
+          content = re.sub(
+              r"define\('UPC_UNIFIED_API_BASE_URL',\s*'[^']*'\)",
+              f"define('UPC_UNIFIED_API_BASE_URL', '{upc_api_base_url}')",
               content
           )
           with open('payplug-config.php', 'w') as f:
