@@ -97,6 +97,17 @@ jobs:
               f.write(content)
           PYEOF
 
+      - name: Apply module environment settings
+        env:
+          TARGET_ENV: ${{ inputs.env }}
+        run: |
+          if [ -f dev/ci/set_environment.sh ]; then
+            chmod +x dev/ci/set_environment.sh
+            ./dev/ci/set_environment.sh "$TARGET_ENV"
+          else
+            echo "No dev/ci/set_environment.sh in this ref, nothing to apply"
+          fi
+
       # ── Package build ──────────────────────────────────────────────────────
       - name: Build the package
         run: |
