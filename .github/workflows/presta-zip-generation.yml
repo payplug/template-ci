@@ -19,6 +19,10 @@ on:
         description: 'Target environment (QA or prod)'
         type: string
         default: 'QA'
+      scalapay-env:
+        description: 'Scalapay widget environment written into ScalapayWidgetAction::WIDGET_ENVIRONMENT (e.g. integration for QA zips); prod leaves it empty'
+        type: string
+        default: 'prod'
       base-ref:
         description: 'Base branch ref used for translation generation'
         type: string
@@ -97,16 +101,16 @@ jobs:
               f.write(content)
           PYEOF
 
-      - name: Apply module environment settings
+      - name: Set the Scalapay widget environment
+        if: inputs.scalapay-env != 'prod'
         env:
-          TARGET_ENV: ${{ inputs.env }}
+          SCALAPAY_ENV: ${{ inputs.scalapay-env }}
         run: |
-          if [ -f dev/ci/set_environment.sh ]; then
-            chmod +x dev/ci/set_environment.sh
-            ./dev/ci/set_environment.sh "$TARGET_ENV"
-          else
-            echo "No dev/ci/set_environment.sh in this ref, nothing to apply"
-          fi
+          [[ "$SCALAPAY_ENV" =~ ^[a-z]+$ ]] || { echo "Invalid scalapay-env"; exit 1; }
+          f=src/actions/ScalapayWidgetAction.php
+          [ "$(grep -c "const WIDGET_ENVIRONMENT = '';" "$f")" = 1 ] || { echo "Placeholder not found exactly once in $f"; exit 1; }
+          sed -i "s/const WIDGET_ENVIRONMENT = '';/const WIDGET_ENVIRONMENT = '${SCALAPAY_ENV}';/" "$f"
+          grep -q "const WIDGET_ENVIRONMENT = '${SCALAPAY_ENV}';" "$f"
 
       # ── Package build ──────────────────────────────────────────────────────
       - name: Build the package
