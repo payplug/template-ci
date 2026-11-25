@@ -112,6 +112,8 @@ jobs:
           HOSTED_FIELDS_SDK_URL: ${{ secrets.hosted-fields-sdk }}
           UPC_OAUTH_BASE_URL: ${{ secrets.upc-oauth-base-url }}
           UPC_UNIFIED_API_BASE_URL: ${{ secrets.upc-api-base-url }}
+          SCALAPAY_WIDGET_URL: ${{ secrets.scalapay-widget-url }}
+          SCALAPAY_WIDGET_ENV: ${{ inputs.env == 'QA' && 'integration' || 'prod' }}
         run: |
           python3 << 'PYEOF'
           import os, re
@@ -125,6 +127,8 @@ jobs:
           upc_oauth_base_url    = os.environ['UPC_OAUTH_BASE_URL']
           hosted_fields_sdk    = os.environ['HOSTED_FIELDS_SDK_URL']
           upc_api_base_url   = os.environ['UPC_UNIFIED_API_BASE_URL']
+          scalapay_widget_url = os.environ['SCALAPAY_WIDGET_URL']
+          scalapay_widget_env = os.environ['SCALAPAY_WIDGET_ENV']
 
           # assets/js/payplug-domain.js
           # QA:   replace PAYPLUG_DOMAIN value with the secret
@@ -203,6 +207,28 @@ jobs:
           content = re.sub(
               r"define\('UPC_UNIFIED_API_BASE_URL',\s*'[^']*'\)",
               f"define('UPC_UNIFIED_API_BASE_URL', '{upc_api_base_url}')",
+              content
+          )
+          with open('payplug-config.php', 'w') as f:
+              f.write(content)
+          
+          # payplug-config.php — set SCALAPAY_WIDGET_URL constant
+          with open('payplug-config.php', 'r') as f:
+              content = f.read()
+          content = re.sub(
+              r"define\('SCALAPAY_WIDGET_URL',\s*'[^']*'\)",
+              f"define('SCALAPAY_WIDGET_URL', '{scalapay_widget_url}')",
+              content
+          )
+          with open('payplug-config.php', 'w') as f:
+              f.write(content)
+
+          # payplug-config.php — set SCALAPAY_WIDGET_ENV constant
+          with open('payplug-config.php', 'r') as f:
+              content = f.read()
+          content = re.sub(
+              r"define\('SCALAPAY_WIDGET_ENV',\s*'[^']*'\)",
+              f"define('SCALAPAY_WIDGET_ENV', '{scalapay_widget_env}')",
               content
           )
           with open('payplug-config.php', 'w') as f:
